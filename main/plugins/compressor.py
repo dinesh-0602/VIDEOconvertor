@@ -30,32 +30,28 @@ async def compress(event, msg, ffmpeg_cmd=0, ps_name=None):
     Drone = event.client
     edit = await Drone.send_message(event.chat_id, "Trying to process.", reply_to=msg.id)
     new_name = "out_" + dt.now().isoformat("_", "seconds")
-    if hasattr(msg.media, "document"):
-        file = msg.media.document
-    else:
-        file = msg.media
+    file = msg.media.document if hasattr(msg.media, "document") else msg.media
     mime = msg.file.mime_type
-    if 'mp4' in mime:
+    if 'mp4' in mime or msg.video:
         n = "media_" + dt.now().isoformat("_", "seconds") + ".mp4"
-        out = new_name + ".mp4"
-    elif msg.video:
-        n = "media_" + dt.now().isoformat("_", "seconds") + ".mp4"
-        out = new_name + ".mp4"
+        out = f'{new_name}.mp4'
     elif 'x-matroska' in mime:
-        n = "media_" + dt.now().isoformat("_", "seconds") + ".mkv" 
-        out = new_name + ".mp4"            
+        n = "media_" + dt.now().isoformat("_", "seconds") + ".mkv"
+        out = f'{new_name}.mp4'
     elif 'webm' in mime:
-        n = "media_" + dt.now().isoformat("_", "seconds") + ".webm" 
-        out = new_name + ".mp4"
+        n = "media_" + dt.now().isoformat("_", "seconds") + ".webm"
+        out = f'{new_name}.mp4'
     else:
         n = msg.file.name
         ext = (n.split("."))[1]
         out = new_name + ext
     DT = time.time()
-    _ps = "COMPRESS"
-    if ps_name != "**COMPRESSING:**":
-        _ps = "ENCODE"
-    log = await LOG_START(event, f'**{str(_ps)} PROCESS STARTED**\n\n[Bot is busy now]({SUPPORT_LINK})')
+    _ps = "ENCODE" if ps_name != "**COMPRESSING:**" else "COMPRESS"
+    log = await LOG_START(
+        event,
+        f'**{_ps} PROCESS STARTED**\n\n[Bot is busy now]({SUPPORT_LINK})',
+    )
+
     log_end_text = f'**{_ps} PROCESS FINISHED**\n\n[Bot is free now]({SUPPORT_LINK})'
     try:
         await fast_download(n, file, Drone, edit, DT, "**DOWNLOADING:**")
@@ -64,7 +60,7 @@ async def compress(event, msg, ffmpeg_cmd=0, ps_name=None):
         await log.delete()
         await LOG_END(event, log_end_text)
         print(e)
-        return await edit.edit(f"An error occured while downloading.\n\nContact [SUPPORT]({SUPPORT_LINK})", link_preview=False) 
+        return await edit.edit(f"An error occured while downloading.\n\nContact [SUPPORT]({SUPPORT_LINK})", link_preview=False)
     name = '__' + dt.now().isoformat("_", "seconds") + ".mp4"
     os.rename(n, name)
     await edit.edit("Extracting metadata...")
@@ -72,27 +68,24 @@ async def compress(event, msg, ffmpeg_cmd=0, ps_name=None):
     codec = vid['streams'][0]['codec_name']
     hgt = video_metadata(name)["height"]
     wdt = video_metadata(name)["width"]
-    if ffmpeg_cmd == 2:
-        if hgt == 360 or wdt == 640:
-            await log.delete()
-            await LOG_END(event, log_end_text)
-            await edit.edit("Fast compress cannot be used for this media, try using HEVC!")
-            os.rmdir("encodemedia")
-            return
-    if ffmpeg_cmd == 3:
-        if codec == 'hevc':
-            await log.delete()
-            await LOG_END(event, log_end_text)
-            await edit.edit("The given video is already in H.265 codec.")
-            os.rmdir("encodemedia")
-            return
-    if ffmpeg_cmd == 4:
-        if codec == 'h264':
-            await log.delete()
-            await LOG_END(event, log_end_text)
-            await edit.edit("The given video is already in H.264 codec.")
-            os.rmdir("encodemedia")
-            return
+    if ffmpeg_cmd == 2 and (hgt == 360 or wdt == 640):
+        await log.delete()
+        await LOG_END(event, log_end_text)
+        await edit.edit("Fast compress cannot be used for this media, try using HEVC!")
+        os.rmdir("encodemedia")
+        return
+    if ffmpeg_cmd == 3 and codec == 'hevc':
+        await log.delete()
+        await LOG_END(event, log_end_text)
+        await edit.edit("The given video is already in H.265 codec.")
+        os.rmdir("encodemedia")
+        return
+    if ffmpeg_cmd == 4 and codec == 'h264':
+        await log.delete()
+        await LOG_END(event, log_end_text)
+        await edit.edit("The given video is already in H.264 codec.")
+        os.rmdir("encodemedia")
+        return
     FT = time.time()
     progress = f"progress-{FT}.txt"
     cmd = f'ffmpeg -hide_banner -loglevel quiet -progress {progress} -i """{name}""" None """{out}""" -y'
@@ -111,31 +104,18 @@ async def compress(event, msg, ffmpeg_cmd=0, ps_name=None):
         await LOG_END(event, log_end_text)
         os.rmdir("encodemedia")
         print(e)
-        return await edit.edit(f"An error occured while FFMPEG progress.\n\nContact [SUPPORT]({SUPPORT_LINK})", link_preview=False)  
-    out2 = dt.now().isoformat("_", "seconds") + ".mp4" 
-    if msg.file.name:
-        out2 = msg.file.name
-    else:
-        out2 = dt.now().isoformat("_", "seconds") + ".mp4" 
+        return await edit.edit(f"An error occured while FFMPEG progress.\n\nContact [SUPPORT]({SUPPORT_LINK})", link_preview=False)
+    out2 = dt.now().isoformat("_", "seconds") + ".mp4"
+    out2 = msg.file.name or dt.now().isoformat("_", "seconds") + ".mp4"
     os.rename(out, out2)
     i_size = os.path.getsize(name)
-    f_size = os.path.getsize(out2)     
+    f_size = os.path.getsize(out2)
     text = F'**ENCODED by:** @{BOT_UN}'
     if ps_name != "**ENCODING:**":
         text = f'**COMPRESSED by** : @{BOT_UN}\n\nbefore compressing : `{i_size}`\nafter compressing : `{f_size}`'
     UT = time.time()
     await log.edit("Uploading file.")
-    if 'x-matroska' in mime:
-        try:
-            uploader = await fast_upload(f'{out2}', f'{out2}', UT, Drone, edit, '**UPLOADING:**')
-            await Drone.send_file(event.chat_id, uploader, caption=text, thumb=JPG, force_document=True)
-        except Exception as e:
-            await log.delete()
-            await LOG_END(event, log_end_text)
-            os.rmdir("encodemedia")
-            print(e)
-            return await edit.edit(f"An error occured while uploading.\n\nContact [SUPPORT]({SUPPORT_LINK})", link_preview=False)
-    elif 'webm' in mime:
+    if 'x-matroska' in mime or 'webm' in mime:
         try:
             uploader = await fast_upload(f'{out2}', f'{out2}', UT, Drone, edit, '**UPLOADING:**')
             await Drone.send_file(event.chat_id, uploader, caption=text, thumb=JPG, force_document=True)
